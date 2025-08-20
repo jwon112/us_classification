@@ -20,6 +20,7 @@ from sklearn.metrics import f1_score, precision_score, recall_score, confusion_m
 
 from functions_for_train import find_image_sizes, EarlyStopping, calculate_optimal_size, get_unique_filename, save_results_to_csv
 from model import EnhancedResNet, CustomModel
+from DenseNet_model import EnhancedDenseNet
 from Grad_Cam import log_gradcam_examples, log_gradcam_to_wandb, overlay_heatmap_on_image, generate_gradcam_heatmap, visualize_cam, show_cam_on_image, GradCAM
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -45,15 +46,17 @@ def set_seed(random_seed):
 # Argument Parser Setup
 random_seeds = random.sample(range(1, 3000), 20)
 
-parser = argparse.ArgumentParser(description='Train a ResNet model with CBAM for ORS classification.')
+parser = argparse.ArgumentParser(description='Train multiple models for US classification comparison.')
 parser.add_argument('--epochs', type=int, default=10, help='Number of epochs to train')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training, set to -1 for auto allocation')
 parser.add_argument('--pretrained_weights', type=str, default=None, help='Path to pretrained weights (.pth file)')
 parser.add_argument('--seeds', nargs='+', type=int, default=[24], help='List of seeds to try for best result')
+parser.add_argument('--models', nargs='+', type=str, default=['resnet', 'densenet'], 
+                   choices=['resnet', 'densenet'], help='List of models to train')
 args = parser.parse_args()
 
 # WandB initialization
-wandb.init(project="US_classification_seed_changing")
+wandb.init(project="US_classification_model_comparison")
 # wandb.config.update({"learning_rate": 6e-5, "epochs": args.epochs, "batch_size": args.batch_size})
 wandb.config.update({"learning_rate": 0.0001 , "epochs": args.epochs, "batch_size": args.batch_size})
 #previous lr : 7.316701740442333e-05
@@ -254,7 +257,7 @@ def test(model, test_dataloader, criterion):
 
 
 
-def train_and_evaluate_model(model, dataloaders, criterion, optimizer, num_epochs=25):
+def train_and_evaluate_model(model, dataloaders, criterion, optimizer, num_epochs=25, model_name="", seed=0):
     results = []
     early_stopping = EarlyStopping(patience=5, verbose=True)
     best_test_acc, best_epoch_acc = 0.0, 0
@@ -327,10 +330,10 @@ def train_and_evaluate_model(model, dataloaders, criterion, optimizer, num_epoch
                 disp.plot(cmap=plt.cm.Blues)
 
                 # Save the plot to experiment folder and WandB
-                confusion_matrix_file = os.path.join(experiment_dir, f"confusion_matrix_seed_{seed}_epoch_{epoch + 1}.png")
+                confusion_matrix_file = os.path.join(experiment_dir, f"confusion_matrix_{model_name}_seed_{seed}_epoch_{epoch + 1}.png")
                 plt.savefig(confusion_matrix_file)
                 wandb.log({
-                    f"Confusion Matrix Epoch {epoch + 1}": wandb.Image(confusion_matrix_file)
+                    f"{model_name.upper()} Confusion Matrix Epoch {epoch + 1}": wandb.Image(confusion_matrix_file)
                 })
                 plt.close()
 
@@ -349,11 +352,11 @@ def train_and_evaluate_model(model, dataloaders, criterion, optimizer, num_epoch
 
             # Log to WandB
             wandb.log({
-                f"{phase.capitalize()} Loss": epoch_loss,
-                f"{phase.capitalize()} Accuracy": epoch_acc,
-                f"{phase.capitalize()} F1": epoch_f1.item(),
-                f"{phase.capitalize()} Precision": epoch_precision.item(),
-                f"{phase.capitalize()} Recall": epoch_recall.item()
+                f"{model_name.upper()}_{phase.capitalize()}_Loss": epoch_loss,
+                f"{model_name.upper()}_{phase.capitalize()}_Accuracy": epoch_acc,
+                f"{model_name.upper()}_{phase.capitalize()}_F1": epoch_f1.item(),
+                f"{model_name.upper()}_{phase.capitalize()}_Precision": epoch_precision.item(),
+                f"{model_name.upper()}_{phase.capitalize()}_Recall": epoch_recall.item()
             })
 
         results.append([
@@ -365,7 +368,7 @@ def train_and_evaluate_model(model, dataloaders, criterion, optimizer, num_epoch
         ])
 
         # 시드별 결과를 실험 폴더에 저장
-        seed_results_file = os.path.join(experiment_dir, f"results_seed_{seed}.csv")
+        seed_results_file = os.path.join(experiment_dir, f"results_{model_name}_seed_{seed}.csv")
         save_results_to_csv(results, seed_results_file)
 
         if early_stopping(epoch_metrics['test_loss'], model):
@@ -397,10 +400,10 @@ best_seed, best_accuracy = None, 0.0
 columns = ["Seed", "Total Parameters", "Trainable Parameters", "FLOPs", "Model Size (MB)", "Test Accuracy", "Best Epoch", "Best F1 Score", "Test Precision", "Test Recall"]
 seed_results = []
 
-# Run training for each seed and save results per seed
+# Run training for each model and seed
 if __name__ == "__main__":
-    best_seed, best_accuracy = None, 0.0
-    seed_results = []
+    best_seed, best_accuracy, best_model_name = None, 0.0, None
+    all_results = []
     
     # 실행별 결과 폴더 생성
     timestamp = time.strftime('%Y%m%d_%H%M%S')
@@ -408,57 +411,77 @@ if __name__ == "__main__":
     os.makedirs(experiment_dir, exist_ok=True)
     
     print(f"Results will be saved in: {experiment_dir}")
+    print(f"Training models: {args.models}")
     print("=" * 50)
 
-    for seed in args.seeds:
-        print(f"Training with Seed: {seed}")
-        set_seed(seed)  # Set reproducible seed
-
-        model = CustomModel(num_classes=3).to(device)
+    # 각 모델에 대해 훈련
+    for model_name in args.models:
+        print(f"\n{'='*20} Training {model_name.upper()} Model {'='*20}")
         
-        # 모델 정보 출력 및 계산
-        print(f"\n=== Model Information for Seed {seed} ===")
-        total_params, trainable_params = count_parameters(model)
-        flops, _ = calculate_flops(model)
-        model_size_mb = calculate_model_size_mb(model)
-        print("=" * 50)
-        
-        # 모델 정보를 WandB에 로깅
-        wandb.log({
-            f"seed_{seed}_total_parameters": total_params,
-            f"seed_{seed}_trainable_parameters": trainable_params,
-            f"seed_{seed}_flops": flops if flops else 0,
-            f"seed_{seed}_model_size_mb": model_size_mb
-        })
-        
-        criterion = nn.CrossEntropyLoss()
-        optimizer = optim.NAdam(model.parameters(), lr=wandb.config["learning_rate"])
+        for seed in args.seeds:
+            print(f"\nTraining {model_name.upper()} with Seed: {seed}")
+            set_seed(seed)  # Set reproducible seed
 
-        # Collect 6 values for each seed
-        test_accuracy, best_epoch_acc, best_epoch_confusion_matrix, best_f1, best_precision, best_recall = train_and_evaluate_model(
-    model, dataloaders, criterion, optimizer, num_epochs=args.epochs
-)
+            # 모델 선택
+            if model_name == 'resnet':
+                model = CustomModel(num_classes=3).to(device)
+            elif model_name == 'densenet':
+                model = EnhancedDenseNet(num_classes=3).to(device)
+            else:
+                print(f"Unknown model: {model_name}, skipping...")
+                continue
+            
+            # 모델 정보 출력 및 계산
+            print(f"\n=== {model_name.upper()} Model Information for Seed {seed} ===")
+            total_params, trainable_params = count_parameters(model)
+            flops, _ = calculate_flops(model)
+            model_size_mb = calculate_model_size_mb(model)
+            print("=" * 50)
+            
+            # 모델 정보를 WandB에 로깅
+            wandb.log({
+                f"{model_name}_seed_{seed}_total_parameters": total_params,
+                f"{model_name}_seed_{seed}_trainable_parameters": trainable_params,
+                f"{model_name}_seed_{seed}_flops": flops if flops else 0,
+                f"{model_name}_seed_{seed}_model_size_mb": model_size_mb
+            })
+            
+            criterion = nn.CrossEntropyLoss()
+            optimizer = optim.NAdam(model.parameters(), lr=wandb.config["learning_rate"])
+
+            # Collect 6 values for each seed
+            test_accuracy, best_epoch_acc, best_epoch_confusion_matrix, best_f1, best_precision, best_recall = train_and_evaluate_model(
+                model, dataloaders, criterion, optimizer, num_epochs=args.epochs, model_name=model_name, seed=seed
+            )
+
+            # Append all results for the model and seed (including model information)
+            all_results.append([model_name, seed, total_params, trainable_params, flops if flops else 0, model_size_mb, test_accuracy, best_epoch_acc, best_f1, best_precision, best_recall])
+            
+            # Update best results
+            if test_accuracy > best_accuracy:
+                best_accuracy = test_accuracy
+                best_seed = seed
+                best_model_name = model_name
 
 
-    # Append all results for the seed (including model information)
-        seed_results.append([seed, total_params, trainable_params, flops if flops else 0, model_size_mb, test_accuracy, best_epoch_acc, best_f1, best_precision, best_recall])
-
-
-    # Unpack correctly with 10 variables (including model information)
-    for seed, total_params, trainable_params, flops, model_size_mb, test_acc, best_epoch, best_f1, test_precision, test_recall in seed_results:
-        print(f"Seed: {seed}, Params: {total_params:,}, FLOPs: {flops:,}, Size: {model_size_mb:.2f}MB, "
+    # Unpack correctly with 11 variables (including model name and model information)
+    for model_name, seed, total_params, trainable_params, flops, model_size_mb, test_acc, best_epoch, best_f1, test_precision, test_recall in all_results:
+        print(f"Model: {model_name.upper()}, Seed: {seed}, Params: {total_params:,}, FLOPs: {flops:,}, Size: {model_size_mb:.2f}MB, "
               f"Test Acc: {test_acc:.4f}, Best Epoch: {best_epoch}, "
               f"F1: {best_f1:.4f}, Precision: {test_precision:.4f}, Recall: {test_recall:.4f}")
 
     if best_seed is not None:
-        print(f"Logging Confusion Matrix for Seed: {best_seed}")
+        print(f"\nLogging Confusion Matrix for Best Model: {best_model_name.upper()} with Seed: {best_seed}")
         set_seed(best_seed)  # Best Seed로 재현성 확보
 
         # 모델 재초기화 및 테스트 데이터로 Confusion Matrix 생성
-        best_model = CustomModel(num_classes=3).to(device)
+        if best_model_name == 'resnet':
+            best_model = CustomModel(num_classes=3).to(device)
+        elif best_model_name == 'densenet':
+            best_model = EnhancedDenseNet(num_classes=3).to(device)
         
         # Best seed 모델 정보도 출력
-        print(f"\n=== Best Model Information (Seed {best_seed}) ===")
+        print(f"\n=== Best Model Information ({best_model_name.upper()}, Seed {best_seed}) ===")
         best_total_params, best_trainable_params = count_parameters(best_model)
         best_flops, _ = calculate_flops(best_model)
         best_model_size_mb = calculate_model_size_mb(best_model)
@@ -484,13 +507,25 @@ if __name__ == "__main__":
         # Log Confusion Matrix to WandB
         log_confusion_matrix_to_wandb(all_labels, all_preds, class_names=["Normal", "Benign", "Malignant"])
     
-    # Print a summary of best results for each seed
-    print("\nBest Results per Seed:")
-    print("Seed results:")
+    # Print a summary of best results for each model and seed
+    print("\nBest Results per Model and Seed:")
+    print("Model comparison results:")
 
     # 최종 결과를 실험 폴더에 저장
-    results_df = pd.DataFrame(seed_results, columns=columns)
-    overall_results_file = os.path.join(experiment_dir, f"overall_seed_results.csv")
+    columns = ['Model', 'Seed', 'Total_Params', 'Trainable_Params', 'FLOPs', 'Model_Size_MB', 
+               'Test_Accuracy', 'Best_Epoch', 'F1_Score', 'Precision', 'Recall']
+    results_df = pd.DataFrame(all_results, columns=columns)
+    
+    # 모델별로 결과 분리하여 저장
+    for model_name in args.models:
+        model_results = results_df[results_df['Model'] == model_name]
+        if not model_results.empty:
+            model_results_file = os.path.join(experiment_dir, f"{model_name}_results_summary.csv")
+            model_results.to_csv(model_results_file, index=False)
+            print(f"{model_name.upper()} results saved to: {model_results_file}")
+    
+    # 전체 비교 결과 저장
+    overall_results_file = os.path.join(experiment_dir, f"overall_model_comparison_results.csv")
     results_df.to_csv(overall_results_file, index=False)
     
     # WandB에도 저장 (Windows 권한 문제 방지)
