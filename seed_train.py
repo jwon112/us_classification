@@ -21,6 +21,10 @@ from sklearn.metrics import f1_score, precision_score, recall_score, confusion_m
 from functions_for_train import find_image_sizes, EarlyStopping, calculate_optimal_size, get_unique_filename, save_results_to_csv
 from model import EnhancedResNet, CustomModel
 from DenseNet_model import EnhancedDenseNet
+from MobileNet_model import EnhancedMobileNet
+from EfficientNet_model import EnhancedEfficientNet
+from ShuffleNet_model import EnhancedShuffleNet
+from ConvNeXt_model import EnhancedConvNeXt
 from Grad_Cam import log_gradcam_examples, log_gradcam_to_wandb, overlay_heatmap_on_image, generate_gradcam_heatmap, visualize_cam, show_cam_on_image, GradCAM
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -51,8 +55,8 @@ parser.add_argument('--epochs', type=int, default=10, help='Number of epochs to 
 parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training, set to -1 for auto allocation')
 parser.add_argument('--pretrained_weights', type=str, default=None, help='Path to pretrained weights (.pth file)')
 parser.add_argument('--seeds', nargs='+', type=int, default=[24], help='List of seeds to try for best result')
-parser.add_argument('--models', nargs='+', type=str, default=['resnet', 'densenet'], 
-                   choices=['resnet', 'densenet'], help='List of models to train')
+parser.add_argument('--models', nargs='+', type=str, default=['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext'], 
+                   choices=['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext'], help='List of models to train')
 args = parser.parse_args()
 
 # WandB initialization
@@ -350,7 +354,7 @@ def train_and_evaluate_model(model, dataloaders, criterion, optimizer, num_epoch
             print(f"{phase.capitalize()} Loss: {epoch_loss:.4f}, Accuracy: {epoch_acc:.4f}, "
                   f"F1 Score: {epoch_f1:.4f}, Precision: {epoch_precision:.4f}, Recall: {epoch_recall:.4f}")
 
-            # Log to WandB
+            # Log to WandB - 모델별로 구분하여 로깅
             wandb.log({
                 f"{model_name.upper()}_{phase.capitalize()}_Loss": epoch_loss,
                 f"{model_name.upper()}_{phase.capitalize()}_Accuracy": epoch_acc,
@@ -427,6 +431,14 @@ if __name__ == "__main__":
                 model = CustomModel(num_classes=3).to(device)
             elif model_name == 'densenet':
                 model = EnhancedDenseNet(num_classes=3).to(device)
+            elif model_name == 'mobilenet':
+                model = EnhancedMobileNet(num_classes=3).to(device)
+            elif model_name == 'efficientnet':
+                model = EnhancedEfficientNet(num_classes=3).to(device)
+            elif model_name == 'shufflenet':
+                model = EnhancedShuffleNet(num_classes=3).to(device)
+            elif model_name == 'convnext':
+                model = EnhancedConvNeXt(num_classes=3).to(device)
             else:
                 print(f"Unknown model: {model_name}, skipping...")
                 continue
@@ -479,6 +491,14 @@ if __name__ == "__main__":
             best_model = CustomModel(num_classes=3).to(device)
         elif best_model_name == 'densenet':
             best_model = EnhancedDenseNet(num_classes=3).to(device)
+        elif best_model_name == 'mobilenet':
+            best_model = EnhancedMobileNet(num_classes=3).to(device)
+        elif best_model_name == 'efficientnet':
+            best_model = EnhancedEfficientNet(num_classes=3).to(device)
+        elif best_model_name == 'shufflenet':
+            best_model = EnhancedShuffleNet(num_classes=3).to(device)
+        elif best_model_name == 'convnext':
+            best_model = EnhancedConvNeXt(num_classes=3).to(device)
         
         # Best seed 모델 정보도 출력
         print(f"\n=== Best Model Information ({best_model_name.upper()}, Seed {best_seed}) ===")
@@ -510,6 +530,37 @@ if __name__ == "__main__":
     # Print a summary of best results for each model and seed
     print("\nBest Results per Model and Seed:")
     print("Model comparison results:")
+    
+    # 모델별 평균 성능 계산 및 WandB에 로깅
+    model_summary = {}
+    for model_name in args.models:
+        model_results = [r for r in all_results if r[0] == model_name]
+        if model_results:
+            avg_accuracy = np.mean([r[6] for r in model_results])  # Test_Accuracy
+            avg_f1 = np.mean([r[8] for r in model_results])        # F1_Score
+            avg_precision = np.mean([r[9] for r in model_results]) # Precision
+            avg_recall = np.mean([r[10] for r in model_results])   # Recall
+            
+            model_summary[model_name] = {
+                'accuracy': avg_accuracy,
+                'f1': avg_f1,
+                'precision': avg_precision,
+                'recall': avg_recall
+            }
+            
+            print(f"{model_name.upper()}: Avg Acc: {avg_accuracy:.4f}, Avg F1: {avg_f1:.4f}")
+    
+    # 모델 비교 차트를 WandB에 로깅
+    if len(model_summary) > 1:
+        # 각 모델별 성능을 개별적으로 로깅
+        for model in args.models:
+            if model in model_summary:
+                wandb.log({
+                    f"Model_Comparison/{model.upper()}_Accuracy": model_summary[model]['accuracy'],
+                    f"Model_Comparison/{model.upper()}_F1": model_summary[model]['f1'],
+                    f"Model_Comparison/{model.upper()}_Precision": model_summary[model]['precision'],
+                    f"Model_Comparison/{model.upper()}_Recall": model_summary[model]['recall']
+                })
 
     # 최종 결과를 실험 폴더에 저장
     columns = ['Model', 'Seed', 'Total_Params', 'Trainable_Params', 'FLOPs', 'Model_Size_MB', 
