@@ -5,6 +5,9 @@ wandb/
 # Experiment results
 experiment_results_*/
 
+# Baseline results
+baseline_results/
+
 # Model files
 *.pth
 
