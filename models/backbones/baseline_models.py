@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
+import timm
 
 class BaselineResNet(nn.Module):
     """순수 ResNet50 백본 (custom layer 없음)"""
@@ -122,6 +123,33 @@ class BaselineResNeXt(nn.Module):
         x = self.fc(x)
         return x
 
+class BaselineViT(nn.Module):
+    """순수 ViT-B/16 백본 (custom layer 없음)"""
+    def __init__(self, num_classes):
+        super().__init__()
+        self.vit = timm.create_model('vit_base_patch16_224', pretrained=False, num_classes=num_classes)
+    
+    def forward(self, x):
+        return self.vit(x)
+
+class BaselineSwinTransformer(nn.Module):
+    """순수 Swin-T 백본 (custom layer 없음)"""
+    def __init__(self, num_classes):
+        super().__init__()
+        self.swin = timm.create_model('swin_tiny_patch4_window7_224', pretrained=False, num_classes=num_classes)
+    
+    def forward(self, x):
+        return self.swin(x)
+
+class BaselineHRNet(nn.Module):
+    """순수 HRNet-W18 백본 (custom layer 없음)"""
+    def __init__(self, num_classes):
+        super().__init__()
+        self.hrnet = timm.create_model('hrnet_w18_small_v2', pretrained=False, num_classes=num_classes)
+    
+    def forward(self, x):
+        return self.hrnet(x)
+
 # 모델 선택 함수
 def get_baseline_model(model_name, num_classes=3):
     """순수 백본 모델 반환"""
@@ -139,6 +167,12 @@ def get_baseline_model(model_name, num_classes=3):
         return BaselineConvNeXt(num_classes)
     elif model_name == 'resnext':
         return BaselineResNeXt(num_classes)
+    elif model_name == 'vit':
+        return BaselineViT(num_classes)
+    elif model_name == 'swin':
+        return BaselineSwinTransformer(num_classes)
+    elif model_name == 'hrnet':
+        return BaselineHRNet(num_classes)
     else:
         raise ValueError(f"Unknown model: {model_name}")
 
@@ -167,7 +201,7 @@ if __name__ == "__main__":
     print("Baseline 모델 테스트")
     print("=" * 50)
     
-    models_to_test = ['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext', 'resnext']
+    models_to_test = ['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext', 'resnext', 'vit', 'swin', 'hrnet']
     
     for model_name in models_to_test:
         try:

@@ -11,7 +11,7 @@ import seaborn as sns
 import pandas as pd
 from tqdm import tqdm
 import argparse
-from baseline import get_baseline_model
+from models.backbones import get_baseline_model
 
 # GPU 사용 가능 여부 확인
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -155,8 +155,8 @@ def main():
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='Learning rate')
     parser.add_argument('--seeds', nargs='+', type=int, default=[24], help='List of seeds')
     parser.add_argument('--models', nargs='+', type=str, 
-                       default=['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext'],
-                       choices=['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext'],
+                       default=['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext','resnext', 'vit', 'swin', 'hrnet'],
+                       choices=['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext','resnext', 'vit', 'swin', 'hrnet'],
                        help='Models to train')
     
     args = parser.parse_args()

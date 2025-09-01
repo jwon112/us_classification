@@ -7,31 +7,58 @@ import os
 def load_results():
     """결과 파일들을 로드하여 비교 데이터 생성"""
     
-    # Enhanced 모델 결과 로드 (기존 experiment_results 폴더에서)
+    # Enhanced 모델 결과 로드 (experiments/ 폴더에서 integrated_experiment_results_*)
     enhanced_results = []
-    experiment_dirs = [d for d in os.listdir('.') if d.startswith('experiment_results_')]
+    experiments_dir = "experiments"
     
-    if experiment_dirs:
-        # 가장 최근 실험 결과 사용
-        latest_dir = max(experiment_dirs)
-        print(f"Loading enhanced model results from: {latest_dir}")
+    if os.path.exists(experiments_dir):
+        # integrated_experiment_results_* 폴더 찾기
+        integrated_dirs = [d for d in os.listdir(experiments_dir) if d.startswith('integrated_experiment_results_')]
         
-        # 우선적으로 overall_model_comparison_results.csv 찾기
-        overall_csv_path = os.path.join(latest_dir, "overall_model_comparison_results.csv")
-        if os.path.exists(overall_csv_path):
-            enhanced_df = pd.read_csv(overall_csv_path)
-            enhanced_results = enhanced_df.to_dict('records')
-            print(f"   Loaded: overall_model_comparison_results.csv ({len(enhanced_results)} entries)")
-        else:
-            # overall 파일이 없으면 다른 CSV 파일들 중에서 찾기
-            csv_files = [f for f in os.listdir(latest_dir) if f.endswith('.csv')]
-            if csv_files:
-                print(f"   Warning: overall_model_comparison_results.csv not found")
-                print(f"   Available CSV files: {csv_files}")
-                # 첫 번째 CSV 파일 로드 (기존 방식)
-                enhanced_df = pd.read_csv(os.path.join(latest_dir, csv_files[0]))
+        if integrated_dirs:
+            # 가장 최근 통합 실험 결과 사용
+            latest_dir = max(integrated_dirs)
+            latest_path = os.path.join(experiments_dir, latest_dir)
+            print(f"Loading integrated experiment results from: {latest_path}")
+            
+            # integrated_experiment_results.csv 찾기
+            integrated_csv_path = os.path.join(latest_path, "integrated_experiment_results.csv")
+            if os.path.exists(integrated_csv_path):
+                integrated_df = pd.read_csv(integrated_csv_path)
+                # enhanced 모델 결과만 필터링
+                enhanced_df = integrated_df[integrated_df['model_type'] == 'enhanced']
                 enhanced_results = enhanced_df.to_dict('records')
-                print(f"   Loaded: {csv_files[0]} ({len(enhanced_results)} entries)")
+                print(f"   Loaded: integrated_experiment_results.csv ({len(enhanced_results)} enhanced entries)")
+            else:
+                print(f"   Error: integrated_experiment_results.csv not found in {latest_path}")
+        else:
+            # 기존 experiment_results_* 폴더에서 찾기 (fallback)
+            experiment_dirs = [d for d in os.listdir(experiments_dir) if d.startswith('experiment_results_')]
+            if experiment_dirs:
+                latest_dir = max(experiment_dirs)
+                latest_path = os.path.join(experiments_dir, latest_dir)
+                print(f"   Fallback: Loading from experiment_results_* directory: {latest_path}")
+                
+                # overall_model_comparison_results.csv 찾기
+                overall_csv_path = os.path.join(latest_path, "overall_model_comparison_results.csv")
+                if os.path.exists(overall_csv_path):
+                    enhanced_df = pd.read_csv(overall_csv_path)
+                    enhanced_results = enhanced_df.to_dict('records')
+                    print(f"   Loaded: overall_model_comparison_results.csv ({len(enhanced_results)} entries)")
+                else:
+                    # 다른 CSV 파일들 중에서 찾기
+                    csv_files = [f for f in os.listdir(latest_path) if f.endswith('.csv')]
+                    if csv_files:
+                        print(f"   Warning: overall_model_comparison_results.csv not found")
+                        print(f"   Available CSV files: {csv_files}")
+                        # 첫 번째 CSV 파일 로드
+                        enhanced_df = pd.read_csv(os.path.join(latest_path, csv_files[0]))
+                        enhanced_results = enhanced_df.to_dict('records')
+                        print(f"   Loaded: {csv_files[0]} ({len(enhanced_results)} entries)")
+            else:
+                print(f"   No integrated_experiment_results_* or experiment_results_* directories found in {experiments_dir}")
+    else:
+        print(f"   {experiments_dir} directory not found")
     
     # Baseline 모델 결과 로드
     baseline_results = []
@@ -53,20 +80,20 @@ def create_comparison_plot(enhanced_results, baseline_results):
         print("결과 데이터가 부족하여 비교 플롯을 생성할 수 없습니다.")
         return
     
-    # 데이터 준비
-    models = ['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext']
+    # 데이터 준비 - 10개 모델 모두 포함
+    models = ['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext', 'resnext', 'vit', 'swin', 'hrnet']
     
     enhanced_avg = {}
     baseline_avg = {}
     
-    # Enhanced 모델 평균 성능 계산
+    # Enhanced 모델 평균 성능 계산 (새로운 컬럼명 사용)
     for model in models:
-        model_results = [r for r in enhanced_results if r.get('Model', '').lower() == model]
+        model_results = [r for r in enhanced_results if r.get('model_name', '').lower() == model]
         if model_results:
-            accuracies = [r.get('Test_Accuracy', 0) for r in model_results]
+            accuracies = [r.get('final_accuracy', 0) for r in model_results]
             enhanced_avg[model] = np.mean(accuracies)
     
-    # Baseline 모델 평균 성능 계산
+    # Baseline 모델 평균 성능 계산 (기존 컬럼명 사용)
     for model in models:
         model_results = [r for r in baseline_results if r.get('Model', '').lower() == model]
         if model_results:
@@ -88,8 +115,8 @@ def create_comparison_plot(enhanced_results, baseline_results):
         print("비교할 수 있는 데이터가 없습니다.")
         return
     
-    # 플롯 생성
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    # 플롯 생성 (더 큰 크기로 조정)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
     
     # 1. 성능 비교 바 차트
     df_comp = pd.DataFrame(comparison_data)
@@ -154,15 +181,15 @@ def analyze_parameter_efficiency(enhanced_results, baseline_results):
     print("PARAMETER EFFICIENCY ANALYSIS")
     print("="*60)
     
-    models = ['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext']
+    models = ['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext', 'resnext', 'vit', 'swin', 'hrnet']
     
     for model in models:
-        # Enhanced 모델 정보
-        enhanced_model_results = [r for r in enhanced_results if r.get('Model', '').lower() == model]
+        # Enhanced 모델 정보 (새로운 컬럼명 사용)
+        enhanced_model_results = [r for r in enhanced_results if r.get('model_name', '').lower() == model]
         baseline_model_results = [r for r in baseline_results if r.get('Model', '').lower() == model]
         
         if enhanced_model_results and baseline_model_results:
-            enhanced_params = enhanced_model_results[0].get('Total_Parameters', 0)
+            enhanced_params = enhanced_model_results[0].get('total_params', 0)
             baseline_params = baseline_model_results[0].get('Total_Params', 0)
             
             if enhanced_params > 0 and baseline_params > 0:
@@ -183,13 +210,13 @@ def main():
     
     if not enhanced_results:
         print("⚠️  Enhanced 모델 결과를 찾을 수 없습니다.")
-        print("   먼저 enhanced 모델들을 훈련해주세요:")
-        print("   python seed_train.py --epochs 10 --seeds 24 --models resnet densenet")
+        print("   먼저 integrated experiment를 실행해주세요:")
+        print("   python integrated_experiment.py --epochs 10 --seeds 24")
     
     if not baseline_results:
         print("⚠️  Baseline 모델 결과를 찾을 수 없습니다.")
         print("   먼저 baseline 모델들을 훈련해주세요:")
-        print("   python train_baseline.py --epochs 10 --seeds 24 --models resnet densenet")
+        print("   python train_baseline.py --epochs 100")
         print("   결과는 'baseline_results' 폴더에 저장됩니다.")
     
     if enhanced_results and baseline_results:
@@ -204,12 +231,12 @@ def main():
     
     else:
         print("\n📋 사용법:")
-        print("1. Enhanced 모델 훈련:")
-        print("   python seed_train.py --epochs 10 --seeds 24 --models resnet densenet")
-        print("   결과는 'experiment_results_YYYYMMDD_HHMMSS' 폴더에 저장됩니다.")
-        print("\n2. Baseline 모델 훈련:")
-        print("   python train_baseline.py --epochs 10 --seeds 24 --models resnet densenet")
+        print("1. Baseline 모델 훈련 (한 번만):")
+        print("   python train_baseline.py --epochs 100")
         print("   결과는 'baseline_results' 폴더에 저장됩니다.")
+        print("\n2. Enhanced 모델 통합 실험:")
+        print("   python integrated_experiment.py --epochs 100 --seeds 24 42 123")
+        print("   결과는 'experiments/integrated_experiment_results_*' 폴더에 저장됩니다.")
         print("\n3. 모델 비교:")
         print("   python compare_models.py")
 

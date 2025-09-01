@@ -3,6 +3,7 @@ DATA/
 wandb/
 
 # Experiment results
+experiments/
 experiment_results_*/
 
 # Baseline results
