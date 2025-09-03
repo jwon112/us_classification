@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import os
+from visualization import create_model_comparison_chart, create_parameter_efficiency_analysis, create_parameter_efficiency_charts, create_flops_efficiency_charts
 
 def load_results():
     """결과 파일들을 로드하여 비교 데이터 생성"""
@@ -80,96 +81,30 @@ def create_comparison_plot(enhanced_results, baseline_results):
         print("결과 데이터가 부족하여 비교 플롯을 생성할 수 없습니다.")
         return
     
-    # 데이터 준비 - 10개 모델 모두 포함
-    models = ['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext', 'resnext', 'vit', 'swin', 'hrnet']
+    # visualization 모듈의 함수 사용
+    comparison_data = create_model_comparison_chart(
+        enhanced_results, baseline_results, 
+        save_path='model_comparison_enhanced_vs_baseline.png'
+    )
     
-    enhanced_avg = {}
-    baseline_avg = {}
-    
-    # Enhanced 모델 평균 성능 계산 (새로운 컬럼명 사용)
-    for model in models:
-        model_results = [r for r in enhanced_results if r.get('model_name', '').lower() == model]
-        if model_results:
-            accuracies = [r.get('final_accuracy', 0) for r in model_results]
-            enhanced_avg[model] = np.mean(accuracies)
-    
-    # Baseline 모델 평균 성능 계산 (기존 컬럼명 사용)
-    for model in models:
-        model_results = [r for r in baseline_results if r.get('Model', '').lower() == model]
-        if model_results:
-            accuracies = [r.get('Test_Accuracy', 0) for r in model_results]
-            baseline_avg[model] = np.mean(accuracies)
-    
-    # 비교 데이터 생성
-    comparison_data = []
-    for model in models:
-        if model in enhanced_avg and model in baseline_avg:
-            comparison_data.append({
-                'Model': model.upper(),
-                'Enhanced': enhanced_avg[model],
-                'Baseline': baseline_avg[model],
-                'Improvement': enhanced_avg[model] - baseline_avg[model]
-            })
-    
-    if not comparison_data:
-        print("비교할 수 있는 데이터가 없습니다.")
-        return
-    
-    # 플롯 생성 (더 큰 크기로 조정)
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
-    
-    # 1. 성능 비교 바 차트
-    df_comp = pd.DataFrame(comparison_data)
-    x = np.arange(len(df_comp))
-    width = 0.35
-    
-    ax1.bar(x - width/2, df_comp['Baseline'], width, label='Baseline', alpha=0.8, color='skyblue')
-    ax1.bar(x + width/2, df_comp['Enhanced'], width, label='Enhanced', alpha=0.8, color='lightcoral')
-    
-    ax1.set_xlabel('Models')
-    ax1.set_ylabel('Test Accuracy')
-    ax1.set_title('Enhanced vs Baseline Model Performance')
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(df_comp['Model'], rotation=45)
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
-    
-    # 2. 성능 향상 차트
-    colors = ['green' if x > 0 else 'red' for x in df_comp['Improvement']]
-    ax2.bar(df_comp['Model'], df_comp['Improvement'], color=colors, alpha=0.7)
-    ax2.set_xlabel('Models')
-    ax2.set_ylabel('Accuracy Improvement')
-    ax2.set_title('Performance Improvement (Enhanced - Baseline)')
-    ax2.set_xticklabels(df_comp['Model'], rotation=45)
-    ax2.axhline(y=0, color='black', linestyle='-', alpha=0.3)
-    ax2.grid(True, alpha=0.3)
-    
-    # 값 표시
-    for i, v in enumerate(df_comp['Improvement']):
-        ax2.text(i, v + (0.01 if v > 0 else -0.01), f'{v:.4f}', 
-                ha='center', va='bottom' if v > 0 else 'top')
-    
-    plt.tight_layout()
-    plt.savefig('model_comparison_enhanced_vs_baseline.png', dpi=300, bbox_inches='tight')
-    plt.show()
-    
-    # 결과 출력
-    print("\n" + "="*80)
-    print("ENHANCED vs BASELINE MODEL COMPARISON")
-    print("="*80)
-    
-    for row in comparison_data:
-        print(f"{row['Model']:12}: Baseline={row['Baseline']:6.4f}, "
-              f"Enhanced={row['Enhanced']:6.4f}, Improvement={row['Improvement']:+6.4f}")
-    
-    # 전체 평균 향상도
-    avg_improvement = np.mean([r['Improvement'] for r in comparison_data])
-    print(f"\n📊 Average Improvement: {avg_improvement:+.4f}")
-    
-    if avg_improvement > 0:
-        print("✅ Enhanced models show overall improvement over baseline models!")
-    else:
-        print("⚠️  Enhanced models show no overall improvement over baseline models.")
+    if comparison_data:
+        # 결과 출력
+        print("\n" + "="*80)
+        print("ENHANCED vs BASELINE MODEL COMPARISON")
+        print("="*80)
+        
+        for row in comparison_data:
+            print(f"{row['Model']:12}: Baseline={row['Baseline']:6.4f}, "
+                  f"Enhanced={row['Enhanced']:6.4f}, Improvement={row['Improvement']:+6.4f}")
+        
+        # 전체 평균 향상도
+        avg_improvement = np.mean([r['Improvement'] for r in comparison_data])
+        print(f"\n📊 Average Improvement: {avg_improvement:+.4f}")
+        
+        if avg_improvement > 0:
+            print("✅ Enhanced models show overall improvement over baseline models!")
+        else:
+            print("⚠️  Enhanced models show no overall improvement over baseline models.")
 
 def analyze_parameter_efficiency(enhanced_results, baseline_results):
     """파라미터 효율성 분석"""
@@ -177,28 +112,76 @@ def analyze_parameter_efficiency(enhanced_results, baseline_results):
     if not enhanced_results or not baseline_results:
         return
     
-    print("\n" + "="*60)
-    print("PARAMETER EFFICIENCY ANALYSIS")
-    print("="*60)
+    # visualization 모듈의 함수 사용
+    create_parameter_efficiency_analysis(enhanced_results, baseline_results)
+
+def create_parameter_efficiency_charts_from_results(enhanced_results, baseline_results):
+    """Enhanced와 Baseline 결과에서 파라미터 효율성 차트 생성"""
     
-    models = ['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext', 'resnext', 'vit', 'swin', 'hrnet']
+    if not enhanced_results or not baseline_results:
+        print("⚠️  결과 데이터가 부족하여 파라미터 효율성 차트를 생성할 수 없습니다.")
+        return
     
-    for model in models:
-        # Enhanced 모델 정보 (새로운 컬럼명 사용)
-        enhanced_model_results = [r for r in enhanced_results if r.get('model_name', '').lower() == model]
-        baseline_model_results = [r for r in baseline_results if r.get('Model', '').lower() == model]
-        
-        if enhanced_model_results and baseline_model_results:
-            enhanced_params = enhanced_model_results[0].get('total_params', 0)
-            baseline_params = baseline_model_results[0].get('Total_Params', 0)
-            
-            if enhanced_params > 0 and baseline_params > 0:
-                param_increase = enhanced_params - baseline_params
-                param_increase_pct = (param_increase / baseline_params) * 100
-                
-                print(f"{model.upper():12}: Baseline={baseline_params:8,}, "
-                      f"Enhanced={enhanced_params:8,}, "
-                      f"Increase={param_increase:+8,} ({param_increase_pct:+.1f}%)")
+    # 데이터를 DataFrame으로 변환
+    enhanced_df = pd.DataFrame(enhanced_results)
+    baseline_df = pd.DataFrame(baseline_results)
+    
+    # 컬럼명 통일
+    enhanced_df['model_type'] = 'enhanced'
+    enhanced_df['model_name'] = enhanced_df['model_name']
+    enhanced_df['final_accuracy'] = enhanced_df['final_accuracy']
+    enhanced_df['total_params'] = enhanced_df['total_params']
+    enhanced_df['flops'] = enhanced_df['flops']
+    
+    baseline_df['model_type'] = 'baseline'
+    baseline_df['model_name'] = baseline_df['Model']
+    baseline_df['final_accuracy'] = baseline_df['Test_Accuracy']
+    baseline_df['total_params'] = baseline_df['Total_Params']
+    baseline_df['flops'] = baseline_df['FLOPs']
+    
+    # 통합 DataFrame 생성
+    combined_df = pd.concat([
+        enhanced_df[['model_type', 'model_name', 'final_accuracy', 'total_params', 'flops']],
+        baseline_df[['model_type', 'model_name', 'final_accuracy', 'total_params', 'flops']]
+    ], ignore_index=True)
+    
+    # visualization 모듈의 함수 사용
+    create_parameter_efficiency_charts(combined_df, ".")
+
+
+def create_flops_efficiency_charts_from_results(enhanced_results, baseline_results):
+    """Enhanced와 Baseline 결과에서 FLOPs 효율성 차트 생성"""
+    
+    if not enhanced_results or not baseline_results:
+        print("⚠️  결과 데이터가 부족하여 FLOPs 효율성 차트를 생성할 수 없습니다.")
+        return
+    
+    # 데이터를 DataFrame으로 변환
+    enhanced_df = pd.DataFrame(enhanced_results)
+    baseline_df = pd.DataFrame(baseline_results)
+    
+    # 컬럼명 통일
+    enhanced_df['model_type'] = 'enhanced'
+    enhanced_df['model_name'] = enhanced_df['model_name']
+    enhanced_df['final_accuracy'] = enhanced_df['final_accuracy']
+    enhanced_df['total_params'] = enhanced_df['total_params']
+    enhanced_df['flops'] = enhanced_df['flops']
+    
+    baseline_df['model_type'] = 'baseline'
+    baseline_df['model_name'] = baseline_df['Model']
+    baseline_df['final_accuracy'] = baseline_df['Test_Accuracy']
+    baseline_df['total_params'] = baseline_df['Total_Params']
+    baseline_df['flops'] = baseline_df['FLOPs']
+    
+    # 통합 DataFrame 생성
+    combined_df = pd.concat([
+        enhanced_df[['model_type', 'model_name', 'final_accuracy', 'total_params', 'flops']],
+        baseline_df[['model_type', 'model_name', 'final_accuracy', 'total_params', 'flops']]
+    ], ignore_index=True)
+    
+    # visualization 모듈의 함수 사용
+    create_flops_efficiency_charts(combined_df, ".")
+
 
 def main():
     """메인 함수"""
@@ -223,11 +206,21 @@ def main():
         # 성능 비교 플롯 생성
         create_comparison_plot(enhanced_results, baseline_results)
         
-        # 파라미터 효율성 분석
+        # 파라미터 효율성 분석 (텍스트)
         analyze_parameter_efficiency(enhanced_results, baseline_results)
+        
+        # 파라미터 효율성 차트 생성
+        print("\n📊 Creating parameter efficiency charts...")
+        create_parameter_efficiency_charts_from_results(enhanced_results, baseline_results)
+        
+        # FLOPs 효율성 차트 생성
+        print("\n📊 Creating FLOPs efficiency charts...")
+        create_flops_efficiency_charts_from_results(enhanced_results, baseline_results)
         
         # 결과 저장
         print(f"\n📊 Comparison plot saved as: model_comparison_enhanced_vs_baseline.png")
+        print(f"📊 Parameter efficiency charts saved as: parameter_efficiency_*.png")
+        print(f"📊 FLOPs efficiency charts saved as: flops_efficiency_*.png")
     
     else:
         print("\n📋 사용법:")

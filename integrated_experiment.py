@@ -19,6 +19,16 @@ import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
+from visualization import create_learning_curves_chart, create_parameter_efficiency_charts, create_flops_efficiency_charts, create_confusion_matrices
+
+# FLOPs 계산을 위한 라이브러리
+try:
+    from thop import profile, clever_format
+    THOP_AVAILABLE = True
+except ImportError:
+    THOP_AVAILABLE = False
+    print("⚠️  thop library not available. FLOPs calculation will be skipped.")
+    print("   Install with: pip install thop")
 
 # 모델 import
 from models.backbones import get_baseline_model
@@ -32,6 +42,23 @@ def set_seed(seed):
     np.random.seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+def calculate_flops(model, input_size=(1, 3, 224, 224)):
+    """모델의 FLOPs 계산"""
+    if not THOP_AVAILABLE:
+        return 0
+    
+    try:
+        # 더미 입력 생성
+        dummy_input = torch.randn(input_size)
+        
+        # FLOPs 계산
+        flops, params = profile(model, inputs=(dummy_input,), verbose=False)
+        
+        return flops
+    except Exception as e:
+        print(f"⚠️  Error calculating FLOPs: {e}")
+        return 0
 
 def get_data_loaders(data_path, batch_size=32):
     """데이터 로더 생성"""
@@ -57,6 +84,7 @@ def train_model(model, train_loader, test_loader, epochs=10, lr=0.001, device='c
     
     train_losses = []
     test_accuracies = []
+    epoch_results = []  # 모든 epoch 결과 저장용
     
     for epoch in range(epochs):
         # Training
@@ -91,9 +119,16 @@ def train_model(model, train_loader, test_loader, epochs=10, lr=0.001, device='c
         test_accuracy = 100 * correct / total
         test_accuracies.append(test_accuracy)
         
+        # Epoch 결과 저장
+        epoch_results.append({
+            'epoch': epoch + 1,
+            'train_loss': avg_train_loss,
+            'test_accuracy': test_accuracy
+        })
+        
         print(f'Epoch {epoch+1}/{epochs}: Train Loss: {avg_train_loss:.4f}, Test Acc: {test_accuracy:.2f}%')
     
-    return train_losses, test_accuracies
+    return train_losses, test_accuracies, epoch_results
 
 def evaluate_model(model, test_loader, device='cuda'):
     """모델 평가"""
@@ -166,15 +201,17 @@ def run_integrated_experiment(data_path, epochs=10, batch_size=32, seeds=[24], m
     
     # 결과 저장용
     all_results = []
+    all_epochs_results = []  # 모든 epoch 결과 저장용
     
     # Baseline 결과를 all_results에 추가
     print("\n📋 Adding Baseline Results to Comparison...")
     for _, row in baseline_df.iterrows():
         baseline_result = {
-            'seed': 'baseline',  # baseline은 seed가 없음
+            'seed': row['Seed'],  # baseline_results_summary.csv의 실제 Seed 값 사용
             'model_type': 'baseline',
             'model_name': row['Model'],
             'total_params': row['Total_Params'],
+            'flops': row['FLOPs'],  # baseline_results_summary.csv의 FLOPs 컬럼 사용
             'final_accuracy': row['Test_Accuracy'],
             'final_f1': row['F1_Score'],
             'final_precision': row['Precision'],
@@ -183,7 +220,7 @@ def run_integrated_experiment(data_path, epochs=10, batch_size=32, seeds=[24], m
             'best_accuracy': row['Test_Accuracy']  # baseline에는 best_accuracy 컬럼이 없어서 Test_Accuracy 사용
         }
         all_results.append(baseline_result)
-        print(f"   ✅ Added {row['Model'].upper()} baseline results")
+        print(f"   ✅ Added {row['Model'].upper()} baseline results (seed: {row['Seed']})")
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"\n🔧 Using device: {device}")
@@ -211,8 +248,11 @@ def run_integrated_experiment(data_path, epochs=10, batch_size=32, seeds=[24], m
                 # 파라미터 수 계산
                 total_params = sum(p.numel() for p in model.parameters())
                 
+                # FLOPs 계산
+                flops = calculate_flops(model)
+                
                 # 훈련
-                train_losses, test_accuracies = train_model(
+                train_losses, test_accuracies, epoch_results = train_model(
                     model, train_loader, test_loader, epochs, device=device
                 )
                 
@@ -225,6 +265,7 @@ def run_integrated_experiment(data_path, epochs=10, batch_size=32, seeds=[24], m
                     'model_type': 'enhanced',
                     'model_name': model_name,
                     'total_params': total_params,
+                    'flops': flops,
                     'final_accuracy': metrics['accuracy'],
                     'final_f1': metrics['f1'],
                     'final_precision': metrics['precision'],
@@ -233,6 +274,18 @@ def run_integrated_experiment(data_path, epochs=10, batch_size=32, seeds=[24], m
                     'best_accuracy': max(test_accuracies)
                 }
                 all_results.append(result)
+                
+                # 모든 epoch 결과 저장
+                for epoch_result in epoch_results:
+                    epoch_data = {
+                        'seed': seed,
+                        'model_type': 'enhanced',
+                        'model_name': model_name,
+                        'epoch': epoch_result['epoch'],
+                        'train_loss': epoch_result['train_loss'],
+                        'test_accuracy': epoch_result['test_accuracy']
+                    }
+                    all_epochs_results.append(epoch_data)
                 
                 print(f"✅ Enhanced {model_name.upper()} completed")
                 print(f"   Final Accuracy: {metrics['accuracy']:.4f}")
@@ -250,7 +303,14 @@ def run_integrated_experiment(data_path, epochs=10, batch_size=32, seeds=[24], m
     results_df.to_csv(csv_path, index=False)
     print(f"\n📊 Results saved to: {csv_path}")
     
-    # 요약 통계 생성
+    # 모든 epoch 결과 저장
+    if all_epochs_results:
+        epochs_df = pd.DataFrame(all_epochs_results)
+        epochs_csv_path = os.path.join(results_dir, "all_epochs_results.csv")
+        epochs_df.to_csv(epochs_csv_path, index=False)
+        print(f"📈 All epochs results saved to: {epochs_csv_path}")
+    
+    # 요약 통계 생성 (모든 모델의 평균/표준편차)
     summary_stats = results_df.groupby(['model_type', 'model_name']).agg({
         'final_accuracy': ['mean', 'std'],
         'final_f1': ['mean', 'std'],
@@ -260,6 +320,26 @@ def run_integrated_experiment(data_path, epochs=10, batch_size=32, seeds=[24], m
     summary_path = os.path.join(results_dir, "summary_statistics.csv")
     summary_stats.to_csv(summary_path)
     print(f"📈 Summary statistics saved to: {summary_path}")
+    
+    # 차트 생성
+    print("\n📊 Creating analysis charts...")
+    
+    # 학습 곡선 차트
+    if all_epochs_results:
+        epochs_df = pd.DataFrame(all_epochs_results)
+        create_learning_curves_chart(epochs_df, results_dir)
+    
+    # 파라미터 효율성 차트
+    create_parameter_efficiency_charts(results_df, results_dir)
+    
+    # FLOPs 효율성 차트
+    create_flops_efficiency_charts(results_df, results_dir)
+    
+    # Confusion matrices 생성
+    if all_epochs_results:
+        epochs_df = pd.DataFrame(all_epochs_results)
+        create_confusion_matrices(enhanced_models, train_loader, test_loader, 
+                                results_df, epochs_df, results_dir, device)
     
     # 결과 출력
     print("\n" + "="*80)

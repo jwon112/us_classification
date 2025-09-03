@@ -12,6 +12,16 @@ import pandas as pd
 from tqdm import tqdm
 import argparse
 from models.backbones import get_baseline_model
+from visualization import save_confusion_matrix
+
+# FLOPs 계산을 위한 라이브러리
+try:
+    from thop import profile, clever_format
+    THOP_AVAILABLE = True
+except ImportError:
+    THOP_AVAILABLE = False
+    print("⚠️  thop library not available. FLOPs calculation will be skipped.")
+    print("   Install with: pip install thop")
 
 # GPU 사용 가능 여부 확인
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -50,6 +60,23 @@ def calculate_model_size_mb(model):
     size_mb = (param_size + buffer_size) / 1024 / 1024
     return size_mb
 
+def calculate_flops(model, input_size=(1, 3, 224, 224)):
+    """모델의 FLOPs 계산"""
+    if not THOP_AVAILABLE:
+        return 0
+    
+    try:
+        # 더미 입력 생성
+        dummy_input = torch.randn(input_size)
+        
+        # FLOPs 계산
+        flops, params = profile(model, inputs=(dummy_input,), verbose=False)
+        
+        return flops
+    except Exception as e:
+        print(f"⚠️  Error calculating FLOPs: {e}")
+        return 0
+
 def train_and_evaluate_model(model, dataloaders, criterion, optimizer, num_epochs, model_name, seed):
     """모델 훈련 및 평가"""
     print(f"\nTraining {model_name.upper()} Baseline Model with Seed {seed}")
@@ -62,6 +89,7 @@ def train_and_evaluate_model(model, dataloaders, criterion, optimizer, num_epoch
     best_accuracy = 0.0
     best_epoch = 0
     best_confusion_matrix = None
+    last_confusion_matrix = None
     
     for epoch in range(num_epochs):
         # 훈련 단계
@@ -125,28 +153,12 @@ def train_and_evaluate_model(model, dataloaders, criterion, optimizer, num_epoch
             model_save_path = os.path.join("baseline_results", f"baseline_{model_name}_seed_{seed}_best.pth")
             torch.save(model.state_dict(), model_save_path)
             print(f"Best model saved: {model_save_path}")
+        
+        # 마지막 epoch의 confusion matrix 저장
+        if epoch == num_epochs - 1:
+            last_confusion_matrix = conf_matrix
     
-    return test_accuracies[-1], best_epoch, best_confusion_matrix, f1, precision, recall
-
-def save_confusion_matrix(conf_matrix, model_name, seed, epoch, save_dir="baseline_results"):
-    """Confusion Matrix 저장"""
-    os.makedirs(save_dir, exist_ok=True)
-    
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues',
-                xticklabels=['Normal', 'Benign', 'Malignant'],
-                yticklabels=['Normal', 'Benign', 'Malignant'])
-    plt.title(f'Confusion Matrix - {model_name.upper()} Baseline (Seed: {seed}, Epoch: {epoch})')
-    plt.ylabel('True Label')
-    plt.xlabel('Predicted Label')
-    
-    filename = f"confusion_matrix_{model_name}_baseline_seed_{seed}_epoch_{epoch}.png"
-    filepath = os.path.join(save_dir, filename)
-    plt.savefig(filepath, dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    print(f"Confusion matrix saved: {filepath}")
-    return filepath
+    return test_accuracies[-1], best_epoch, best_confusion_matrix, last_confusion_matrix, f1, precision, recall
 
 def main():
     parser = argparse.ArgumentParser(description='Train Baseline CNN Models')
@@ -229,7 +241,9 @@ def main():
             print(f"\n=== {model_name.upper()} Baseline Model Information ===")
             total_params, trainable_params = count_parameters(model)
             model_size_mb = calculate_model_size_mb(model)
+            flops = calculate_flops(model)
             print(f"Model size: {model_size_mb:.2f} MB")
+            print(f"FLOPs: {flops:,}")
             print("=" * 50)
             
             # 손실 함수 및 옵티마이저
@@ -237,16 +251,18 @@ def main():
             optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
             
             # 모델 훈련 및 평가
-            test_accuracy, best_epoch, best_confusion_matrix, best_f1, best_precision, best_recall = train_and_evaluate_model(
+            test_accuracy, best_epoch, best_confusion_matrix, last_confusion_matrix, best_f1, best_precision, best_recall = train_and_evaluate_model(
                 model, dataloaders, criterion, optimizer, args.epochs, model_name, seed
             )
             
             # Confusion Matrix 저장
             if best_confusion_matrix is not None:
-                save_confusion_matrix(best_confusion_matrix, model_name, seed, best_epoch)
+                save_confusion_matrix(best_confusion_matrix, model_name, seed, "best", best_epoch)
+            if last_confusion_matrix is not None:
+                save_confusion_matrix(last_confusion_matrix, model_name, seed, "last", args.epochs)
             
             # 결과 저장
-            all_results.append([model_name, seed, total_params, trainable_params, model_size_mb, 
+            all_results.append([model_name, seed, total_params, trainable_params, model_size_mb, flops,
                               test_accuracy, best_epoch, best_f1, best_precision, best_recall])
             
             # 최고 성능 모델 업데이트
@@ -261,7 +277,7 @@ def main():
     print("="*80)
     
     # 결과를 DataFrame으로 변환
-    columns = ['Model', 'Seed', 'Total_Params', 'Trainable_Params', 'Model_Size_MB', 
+    columns = ['Model', 'Seed', 'Total_Params', 'Trainable_Params', 'Model_Size_MB', 'FLOPs',
                'Test_Accuracy', 'Best_Epoch', 'F1_Score', 'Precision', 'Recall']
     results_df = pd.DataFrame(all_results, columns=columns)
     
