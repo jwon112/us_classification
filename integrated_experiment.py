@@ -190,7 +190,7 @@ def run_integrated_experiment(data_path, epochs=10, batch_size=32, seeds=[24], m
     
     # 사용 가능한 모델들 (새로운 모델들 포함)
     if models is None:
-        enhanced_models = ['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext', 'resnext', 'vit', 'swin', 'hrnet']
+        enhanced_models = ['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext', 'resnext', 'vit', 'swin', 'hrnet', 'repvgg']
     else:
         enhanced_models = models
     
@@ -299,17 +299,62 @@ def run_integrated_experiment(data_path, epochs=10, batch_size=32, seeds=[24], m
                 continue
     
     # 결과를 DataFrame으로 변환
-    results_df = pd.DataFrame(all_results)
+    new_results_df = pd.DataFrame(all_results)
+    
+    # 기존 결과 로드 (있는 경우)
+    csv_path = os.path.join(results_dir, "integrated_experiment_results.csv")
+    if os.path.exists(csv_path):
+        try:
+            existing_df = pd.read_csv(csv_path)
+            print(f"📂 Loaded existing results: {len(existing_df)} entries")
+            
+            # 새로운 결과와 기존 결과 합치기
+            combined_df = pd.concat([existing_df, new_results_df], ignore_index=True)
+            
+            # 중복 제거 (같은 model_name, model_type, seed 조합)
+            combined_df = combined_df.drop_duplicates(subset=['model_name', 'model_type', 'seed'], keep='last')
+            print(f"📊 Combined results: {len(combined_df)} total entries (after deduplication)")
+            
+            results_df = combined_df
+        except Exception as e:
+            print(f"⚠️  Error loading existing results: {e}")
+            print("   Creating new results file...")
+            results_df = new_results_df
+    else:
+        print("📄 Creating new results file...")
+        results_df = new_results_df
     
     # CSV로 저장
-    csv_path = os.path.join(results_dir, "integrated_experiment_results.csv")
     results_df.to_csv(csv_path, index=False)
-    print(f"\n📊 Results saved to: {csv_path}")
+    print(f"📊 Results saved to: {csv_path}")
     
     # 모든 epoch 결과 저장
     if all_epochs_results:
-        epochs_df = pd.DataFrame(all_epochs_results)
+        new_epochs_df = pd.DataFrame(all_epochs_results)
         epochs_csv_path = os.path.join(results_dir, "all_epochs_results.csv")
+        
+        # 기존 epoch 결과 로드 (있는 경우)
+        if os.path.exists(epochs_csv_path):
+            try:
+                existing_epochs_df = pd.read_csv(epochs_csv_path)
+                print(f"📂 Loaded existing epoch results: {len(existing_epochs_df)} entries")
+                
+                # 새로운 결과와 기존 결과 합치기
+                combined_epochs_df = pd.concat([existing_epochs_df, new_epochs_df], ignore_index=True)
+                
+                # 중복 제거 (같은 model_name, model_type, seed, epoch 조합)
+                combined_epochs_df = combined_epochs_df.drop_duplicates(subset=['model_name', 'model_type', 'seed', 'epoch'], keep='last')
+                print(f"📊 Combined epoch results: {len(combined_epochs_df)} total entries (after deduplication)")
+                
+                epochs_df = combined_epochs_df
+            except Exception as e:
+                print(f"⚠️  Error loading existing epoch results: {e}")
+                print("   Creating new epoch results file...")
+                epochs_df = new_epochs_df
+        else:
+            print("📄 Creating new epoch results file...")
+            epochs_df = new_epochs_df
+        
         epochs_df.to_csv(epochs_csv_path, index=False)
         print(f"📈 All epochs results saved to: {epochs_csv_path}")
     

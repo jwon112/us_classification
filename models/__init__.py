@@ -11,6 +11,7 @@ __all__ = [
     # Backbone models
     'BaselineResNet', 'BaselineDenseNet', 'BaselineMobileNet', 
     'BaselineEfficientNet', 'BaselineShuffleNet', 'BaselineConvNeXt', 'BaselineResNeXt',
+    'BaselineViT', 'BaselineSwinTransformer', 'BaselineHRNet', 'BaselineRepVGG',
     
     # Attention modules
     'SEBlock', 'CustomSEBlock', 'ChannelAttention', 'EnhancedSpatialAttention',
@@ -18,5 +19,6 @@ __all__ = [
     # Enhanced models
     'EnhancedResNet', 'EnhancedDenseNet', 'EnhancedMobileNet',
     'EnhancedEfficientNet', 'EnhancedShuffleNet', 'EnhancedConvNeXt', 'EnhancedResNeXt',
+    'EnhancedViT', 'EnhancedSwinTransformer', 'EnhancedHRNet', 'EnhancedRepVGG',
     'EnhancedModelFactory'
 ]

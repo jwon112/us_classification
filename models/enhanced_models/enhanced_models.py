@@ -493,6 +493,74 @@ class EnhancedHRNet(nn.Module):
         x = self.fc(x)
         return x
 
+class EnhancedRepVGG(nn.Module):
+    """Enhanced RepVGG with custom attention and residual modules"""
+    def __init__(self, num_classes=3, variant='A0'):
+        super().__init__()
+        
+        # RepVGG backbone (training-time)
+        if variant == 'A0':
+            from ..backbones.repvgg import create_RepVGG_A0
+            self.repvgg = create_RepVGG_A0(deploy=False, num_classes=0)  # features만 추출
+        elif variant == 'A1':
+            from ..backbones.repvgg import create_RepVGG_A1
+            self.repvgg = create_RepVGG_A1(deploy=False, num_classes=0)
+        elif variant == 'B0':
+            from ..backbones.repvgg import create_RepVGG_B0
+            self.repvgg = create_RepVGG_B0(deploy=False, num_classes=0)
+        else:
+            raise ValueError(f"Unsupported RepVGG variant: {variant}")
+        
+        # RepVGG-A0 output channels 확인
+        with torch.no_grad():
+            test_input = torch.randn(1, 3, 224, 224)
+            test_output = self.repvgg(test_input)
+            repvgg_channels = test_output.shape[1]
+        
+        print(f"RepVGG-{variant} output channels: {repvgg_channels}")
+        
+        # 1x1 convolution to adjust channels
+        self.conv1x1 = nn.Conv2d(repvgg_channels, 1024, kernel_size=1)
+        
+        # Custom enhancement modules
+        self.se_block = CustomSEBlock(1024)
+        self.channel_attention = ChannelAttention(1024)
+        self.spatial_attention = EnhancedSpatialAttention()
+        self.residual_block = BasicBlock(1024, 1024)
+        self.r2_block = R2Block(1024, 1024)
+        
+        # Final layers
+        self.dropout = nn.Dropout(0.3)
+        self.pooling = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(1024, num_classes)
+
+    def forward(self, x):
+        # RepVGG feature extraction (2D feature map)
+        x = self.repvgg(x)  # Shape: [batch_size, channels, H, W]
+        
+        # Channel adjustment
+        x = self.conv1x1(x)  # Shape: [batch_size, 1024, H, W]
+        
+        # First set of enhancements
+        x = self.se_block(x)
+        x = self.channel_attention(x) * x
+        x = self.spatial_attention(x) * x
+        x = self.residual_block(x)
+        
+        x = F.dropout(x, p=0.3, training=self.training)
+        
+        # Second set of enhancements
+        x = self.se_block(x)
+        x = self.channel_attention(x) * x
+        x = self.spatial_attention(x) * x
+        x = self.r2_block(x)
+        
+        # Final processing
+        x = self.pooling(x)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
+        return x
+
 # Enhanced Model Factory
 class EnhancedModelFactory:
     """Factory class for creating enhanced models"""
@@ -520,10 +588,12 @@ class EnhancedModelFactory:
             return EnhancedSwinTransformer(num_classes)
         elif model_name == 'hrnet':
             return EnhancedHRNet(num_classes)
+        elif model_name == 'repvgg':
+            return EnhancedRepVGG(num_classes, variant='A0')  # 기본적으로 A0 사용
         else:
             raise ValueError(f"Unknown enhanced model: {model_name}")
     
     @staticmethod
     def get_available_models():
         """Get list of available enhanced model names"""
-        return ['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext', 'resnext', 'vit', 'swin', 'hrnet']
+        return ['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext', 'resnext', 'vit', 'swin', 'hrnet', 'repvgg']

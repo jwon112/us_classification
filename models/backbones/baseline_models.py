@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
 import timm
+from .repvgg import create_RepVGG_A0, create_RepVGG_A1, create_RepVGG_B0
 
 class BaselineResNet(nn.Module):
     """순수 ResNet50 백본 (custom layer 없음)"""
@@ -150,6 +151,25 @@ class BaselineHRNet(nn.Module):
     def forward(self, x):
         return self.hrnet(x)
 
+class BaselineRepVGG(nn.Module):
+    """순수 RepVGG 백본 (custom layer 없음)"""
+    def __init__(self, num_classes, variant='A0'):
+        super().__init__()
+        if variant == 'A0':
+            self.repvgg = create_RepVGG_A0(deploy=False)
+        elif variant == 'A1':
+            self.repvgg = create_RepVGG_A1(deploy=False)
+        elif variant == 'B0':
+            self.repvgg = create_RepVGG_B0(deploy=False)
+        else:
+            raise ValueError(f"Unsupported RepVGG variant: {variant}")
+        
+        # 마지막 분류기 레이어를 우리의 클래스 수에 맞게 수정
+        self.repvgg.linear = nn.Linear(self.repvgg.linear.in_features, num_classes)
+    
+    def forward(self, x):
+        return self.repvgg(x)
+
 # 모델 선택 함수
 def get_baseline_model(model_name, num_classes=3):
     """순수 백본 모델 반환"""
@@ -173,6 +193,8 @@ def get_baseline_model(model_name, num_classes=3):
         return BaselineSwinTransformer(num_classes)
     elif model_name == 'hrnet':
         return BaselineHRNet(num_classes)
+    elif model_name == 'repvgg':
+        return BaselineRepVGG(num_classes, variant='A0')  # 기본적으로 A0 사용
     else:
         raise ValueError(f"Unknown model: {model_name}")
 
@@ -201,7 +223,7 @@ if __name__ == "__main__":
     print("Baseline 모델 테스트")
     print("=" * 50)
     
-    models_to_test = ['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext', 'resnext', 'vit', 'swin', 'hrnet']
+    models_to_test = ['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext', 'resnext', 'vit', 'swin', 'hrnet', 'repvgg']
     
     for model_name in models_to_test:
         try:

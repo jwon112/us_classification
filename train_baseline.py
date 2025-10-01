@@ -170,8 +170,8 @@ def main():
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='Learning rate')
     parser.add_argument('--seeds', nargs='+', type=int, default=[24], help='List of seeds')
     parser.add_argument('--models', nargs='+', type=str, 
-                       default=['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext','resnext', 'vit', 'swin', 'hrnet'],
-                       choices=['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext','resnext', 'vit', 'swin', 'hrnet'],
+                       default=['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext','resnext', 'vit', 'swin', 'hrnet', 'repvgg'],
+                       choices=['resnet', 'densenet', 'mobilenet', 'efficientnet', 'shufflenet', 'convnext','resnext', 'vit', 'swin', 'hrnet', 'repvgg'],
                        help='Models to train')
     
     args = parser.parse_args()
@@ -282,12 +282,34 @@ def main():
     # 결과를 DataFrame으로 변환
     columns = ['Model', 'Seed', 'Total_Params', 'Trainable_Params', 'Model_Size_MB', 'FLOPs',
                'Test_Accuracy', 'Best_Epoch', 'F1_Score', 'Precision', 'Recall']
-    results_df = pd.DataFrame(all_results, columns=columns)
+    new_results_df = pd.DataFrame(all_results, columns=columns)
+    
+    # 기존 결과 로드 (있는 경우)
+    csv_save_path = os.path.join("baseline_results", "baseline_results_summary.csv")
+    if os.path.exists(csv_save_path):
+        try:
+            existing_df = pd.read_csv(csv_save_path)
+            print(f"📂 Loaded existing results: {len(existing_df)} entries")
+            
+            # 새로운 결과와 기존 결과 합치기
+            combined_df = pd.concat([existing_df, new_results_df], ignore_index=True)
+            
+            # 중복 제거 (같은 Model과 Seed 조합)
+            combined_df = combined_df.drop_duplicates(subset=['Model', 'Seed'], keep='last')
+            print(f"📊 Combined results: {len(combined_df)} total entries (after deduplication)")
+            
+            results_df = combined_df
+        except Exception as e:
+            print(f"⚠️  Error loading existing results: {e}")
+            print("   Creating new results file...")
+            results_df = new_results_df
+    else:
+        print("📄 Creating new results file...")
+        results_df = new_results_df
     
     # CSV로 저장
-    csv_save_path = os.path.join("baseline_results", "baseline_results_summary.csv")
     results_df.to_csv(csv_save_path, index=False)
-    print(f"Results saved to: {csv_save_path}")
+    print(f"💾 Results saved to: {csv_save_path}")
     
     # 결과 출력
     for _, row in results_df.iterrows():
