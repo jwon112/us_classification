@@ -13,7 +13,7 @@ __all__ = [
     'BaselineEfficientNet', 'BaselineShuffleNet', 'BaselineConvNeXt', 'BaselineResNeXt',
     
     # Attention modules
-    'SEBlock', 'ChannelAttention', 'EnhancedSpatialAttention',
+    'SEBlock', 'CustomSEBlock', 'ChannelAttention', 'EnhancedSpatialAttention',
     
     # Enhanced models
     'EnhancedResNet', 'EnhancedDenseNet', 'EnhancedMobileNet',

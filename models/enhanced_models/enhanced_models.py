@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torchvision import models
 import timm
 from ..attention_modules import (
-    SEBlock, ChannelAttention, EnhancedSpatialAttention,
+    CustomSEBlock, ChannelAttention, EnhancedSpatialAttention,
     R2Block, BasicBlock
 )
 
@@ -21,7 +21,7 @@ class EnhancedResNet(nn.Module):
         self.conv1x1 = nn.Conv2d(2048, 1024, kernel_size=1)
         
         # Custom enhancement modules
-        self.se_block = SEBlock(1024)
+        self.se_block = CustomSEBlock(1024)
         self.channel_attention = ChannelAttention(1024)
         self.spatial_attention = EnhancedSpatialAttention()
         self.residual_block = BasicBlock(1024, 1024)
@@ -65,7 +65,7 @@ class EnhancedDenseNet(nn.Module):
         self.conv1x1 = nn.Conv2d(1024, 1024, kernel_size=1)
         
         # Custom enhancement modules
-        self.se_block = SEBlock(1024)
+        self.se_block = CustomSEBlock(1024)
         self.channel_attention = ChannelAttention(1024)
         self.spatial_attention = EnhancedSpatialAttention()
         self.residual_block = BasicBlock(1024, 1024)
@@ -110,7 +110,7 @@ class EnhancedMobileNet(nn.Module):
         self.conv1x1 = nn.Conv2d(1280, 1024, kernel_size=1)
         
         # Custom enhancement modules
-        self.se_block = SEBlock(1024)
+        self.se_block = CustomSEBlock(1024)
         self.channel_attention = ChannelAttention(1024)
         self.spatial_attention = EnhancedSpatialAttention()
         self.residual_block = BasicBlock(1024, 1024)
@@ -154,7 +154,7 @@ class EnhancedEfficientNet(nn.Module):
         self.conv1x1 = nn.Conv2d(1280, 1024, kernel_size=1)
         
         # Custom enhancement modules
-        self.se_block = SEBlock(1024)
+        self.se_block = CustomSEBlock(1024)
         self.channel_attention = ChannelAttention(1024)
         self.spatial_attention = EnhancedSpatialAttention()
         self.residual_block = BasicBlock(1024, 1024)
@@ -203,7 +203,7 @@ class EnhancedShuffleNet(nn.Module):
         
         # 원본 ShuffleNet은 이미 1024 채널을 출력하므로 conv1x1 불필요
         # Custom enhancement modules
-        self.se_block = SEBlock(1024)
+        self.se_block = CustomSEBlock(1024)
         self.channel_attention = ChannelAttention(1024)
         self.spatial_attention = EnhancedSpatialAttention()
         self.residual_block = BasicBlock(1024, 1024)
@@ -259,7 +259,7 @@ class EnhancedConvNeXt(nn.Module):
         self.conv1x1 = nn.Conv2d(actual_channels, 1024, kernel_size=1)
         
         # Custom enhancement modules
-        self.se_block = SEBlock(1024)
+        self.se_block = CustomSEBlock(1024)
         self.channel_attention = ChannelAttention(1024)
         self.spatial_attention = EnhancedSpatialAttention()
         self.residual_block = BasicBlock(1024, 1024)
@@ -305,7 +305,7 @@ class EnhancedResNeXt(nn.Module):
         self.conv1x1 = nn.Conv2d(2048, 1024, kernel_size=1)
         
         # Custom enhancement modules
-        self.se_block = SEBlock(1024)
+        self.se_block = CustomSEBlock(1024)
         self.channel_attention = ChannelAttention(1024)
         self.spatial_attention = EnhancedSpatialAttention()
         self.residual_block = BasicBlock(1024, 1024)
@@ -352,7 +352,7 @@ class EnhancedViT(nn.Module):
             vit_output_dim = test_output.shape[1]
         
         # Custom enhancement modules for ViT features (no spatial attention for 1x1 features)
-        self.se_block = SEBlock(vit_output_dim)
+        self.se_block = CustomSEBlock(vit_output_dim)
         self.channel_attention = ChannelAttention(vit_output_dim)
         # Skip spatial attention for ViT (1x1 features)
         self.residual_block = BasicBlock(vit_output_dim, vit_output_dim)
@@ -402,7 +402,7 @@ class EnhancedSwinTransformer(nn.Module):
             swin_output_dim = test_output.shape[1]
         
         # Custom enhancement modules for Swin features (no spatial attention for 1x1 features)
-        self.se_block = SEBlock(swin_output_dim)
+        self.se_block = CustomSEBlock(swin_output_dim)
         self.channel_attention = ChannelAttention(swin_output_dim)
         # Skip spatial attention for Swin (1x1 features)
         self.residual_block = BasicBlock(swin_output_dim, swin_output_dim)
@@ -460,7 +460,7 @@ class EnhancedHRNet(nn.Module):
         print(f"HRNet output shape: {hrnet_output_shape}")
         
         # Custom enhancement modules for HRNet features (spatial attention 사용 가능!)
-        self.se_block = SEBlock(hrnet_channels)
+        self.se_block = CustomSEBlock(hrnet_channels)
         self.channel_attention = ChannelAttention(hrnet_channels)
         self.spatial_attention = EnhancedSpatialAttention()  # 복원!
         self.residual_block = BasicBlock(hrnet_channels, hrnet_channels)

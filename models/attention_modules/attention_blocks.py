@@ -7,10 +7,10 @@ class Swish(nn.Module):
     def forward(self, x):
         return x * torch.sigmoid(x)
 
-class SEBlock(nn.Module):
-    """Squeeze-and-Excitation Block for channel attention"""
+class CustomSEBlock(nn.Module):
+    """Custom Squeeze-and-Excitation Block for channel attention (GELU version)"""
     def __init__(self, in_channels, reduction=16):
-        super(SEBlock, self).__init__()
+        super(CustomSEBlock, self).__init__()
         self.fc1 = nn.Conv2d(in_channels, in_channels // reduction, 1)
         self.fc2 = nn.Conv2d(in_channels // reduction, in_channels, 1)
         self.relu = nn.ReLU()
@@ -22,6 +22,23 @@ class SEBlock(nn.Module):
         w = self.gelu(self.fc1(w))
         w = self.gelu(self.fc2(w))
         return x * w
+
+class SEBlock(nn.Module):
+    """Standard Squeeze-and-Excitation Block (RepVGG compatible)"""
+    def __init__(self, input_channels, internal_neurons):
+        super(SEBlock, self).__init__()
+        self.down = nn.Conv2d(in_channels=input_channels, out_channels=internal_neurons, kernel_size=1, stride=1, bias=True)
+        self.up = nn.Conv2d(in_channels=internal_neurons, out_channels=input_channels, kernel_size=1, stride=1, bias=True)
+        self.input_channels = input_channels
+
+    def forward(self, inputs):
+        x = F.avg_pool2d(inputs, kernel_size=inputs.size(3))
+        x = self.down(x)
+        x = F.relu(x)
+        x = self.up(x)
+        x = torch.sigmoid(x)
+        x = x.view(-1, self.input_channels, 1, 1)
+        return inputs * x
 
 class ChannelAttention(nn.Module):
     """Channel Attention Module combining average and max pooling"""
@@ -180,6 +197,8 @@ class AttentionFactory:
         """Get attention module by type"""
         if attention_type == 'se':
             return SEBlock(channels, **kwargs)
+        elif attention_type == 'custom_se':
+            return CustomSEBlock(channels, **kwargs)
         elif attention_type == 'channel':
             return ChannelAttention(channels, **kwargs)
         elif attention_type == 'spatial':

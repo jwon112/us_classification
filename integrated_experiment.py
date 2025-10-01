@@ -49,8 +49,11 @@ def calculate_flops(model, input_size=(1, 3, 224, 224)):
         return 0
     
     try:
-        # 더미 입력 생성
-        dummy_input = torch.randn(input_size)
+        # 모델의 디바이스 확인
+        device = next(model.parameters()).device
+        
+        # 더미 입력을 모델과 같은 디바이스에 생성
+        dummy_input = torch.randn(input_size).to(device)
         
         # FLOPs 계산
         flops, params = profile(model, inputs=(dummy_input,), verbose=False)
